@@ -1,0 +1,19 @@
+// Pegasus default baseline theme.
+//
+// This theme makes the current implicit/default Zellij look explicit so it can
+// evolve safely in version control. It is a baseline, not a final redesign.
+themes {
+    pegasus-default {
+        fg 230 230 230
+        bg 10 10 10
+        black 0 0 0
+        red 255 85 85
+        green 0 255 148
+        yellow 255 213 79
+        blue 82 156 255
+        magenta 198 120 221
+        cyan 86 182 194
+        white 245 245 245
+        orange 255 184 108
+    }
+}

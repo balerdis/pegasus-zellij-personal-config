@@ -1,0 +1,27 @@
+# OS and editor artifacts
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+.cache/
+
+# Zellij runtime/session artifacts that should not live in this static config repo
+sessions/
+session-cache/
+resurrect/
+*.session
+*.sock
+*.pid
