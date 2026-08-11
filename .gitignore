@@ -25,3 +25,4 @@ resurrect/
 *.session
 *.sock
 *.pid
+plugins/pegasus-tab-bar/target/

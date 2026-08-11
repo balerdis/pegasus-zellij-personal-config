@@ -4,16 +4,61 @@
 // evolve safely in version control. It is a baseline, not a final redesign.
 themes {
     pegasus-default {
-        fg 230 230 230
-        bg 10 10 10
-        black 0 0 0
-        red 255 85 85
-        green 0 255 148
-        yellow 255 213 79
-        blue 82 156 255
-        magenta 198 120 221
-        cyan 86 182 194
-        white 245 245 245
-        orange 255 184 108
+        fg 201 209 217
+        bg 13 17 23
+        black 13 17 23
+        red 248 81 73
+        green 210 153 34
+        yellow 210 153 34
+        blue 88 166 255
+        magenta 188 140 255
+        cyan 57 197 207
+        white 201 209 217
+        orange 240 136 62
+
+        pane_normal_frame {
+            base 110 118 129
+            background 13 17 23
+            emphasis_0 88 166 255
+            emphasis_1 201 209 217
+            emphasis_2 57 197 207
+            emphasis_3 210 153 34
+        }
+
+        pane_focused_frame {
+            base 210 153 34
+            background 13 17 23
+            emphasis_0 210 153 34
+            emphasis_1 201 209 217
+            emphasis_2 88 166 255
+            emphasis_3 240 136 62
+        }
+
+        pane_mode_frame {
+            base 210 153 34
+            background 13 17 23
+            emphasis_0 240 136 62
+            emphasis_1 201 209 217
+            emphasis_2 88 166 255
+            emphasis_3 248 81 73
+        }
+
+        ribbon_selected {
+            base 13 17 23
+            background 210 153 34
+            emphasis_0 13 17 23
+            emphasis_1 201 209 217
+            emphasis_2 88 166 255
+            emphasis_3 240 136 62
+        }
+
+        ribbon_unselected {
+            base 201 209 217
+            background 22 27 34
+            emphasis_0 110 118 129
+            emphasis_1 88 166 255
+            emphasis_2 57 197 207
+            emphasis_3 210 153 34
+        }
     }
 }

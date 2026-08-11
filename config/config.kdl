@@ -228,7 +228,8 @@ keybinds {
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
 plugins {
-    tab-bar location="zellij:tab-bar"
+    // This absolute location is the supported live default target. See README for custom targets.
+    tab-bar location="file:/home/serg/.config/zellij/plugins/pegasus-tab-bar.wasm"
     status-bar location="zellij:status-bar"
     strider location="zellij:strider"
     compact-bar location="zellij:compact-bar"

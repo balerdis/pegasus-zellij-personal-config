@@ -6,7 +6,10 @@ repo_root=$script_dir
 
 target_dir=${ZELLIJ_CONFIG_DIR:-$HOME/.config/zellij}
 target_themes_dir=$target_dir/themes
+target_plugins_dir=$target_dir/plugins
 backup_root=$target_dir/backups/pegasus-zellij-personal-config
+plugin_builder=$repo_root/scripts/build-pegasus-tab-bar.sh
+plugin_source=$repo_root/plugins/pegasus-tab-bar/target/wasm32-wasip1/release/pegasus-tab-bar.wasm
 
 dry_run=0
 link_mode=0
@@ -16,7 +19,7 @@ usage() {
     cat <<'EOF'
 Usage: ./install.sh [--dry-run] [--link] [--help]
 
-Install the Pegasus personal Zellij configuration.
+Install the Pegasus personal Zellij configuration and tab-bar plugin.
 
 Options:
   --dry-run  Print the actions that would be performed without changing files.
@@ -100,6 +103,11 @@ install_copy() {
 
     ensure_parent_dir "$target"
 
+    if [ "$dry_run" -eq 1 ]; then
+        log "Would copy: $source -> $target"
+        return 0
+    fi
+
     if [ -f "$target" ] && cmp -s "$source" "$target"; then
         log "Unchanged: $target"
         return 0
@@ -116,6 +124,11 @@ install_link() {
     target=$2
 
     ensure_parent_dir "$target"
+
+    if [ "$dry_run" -eq 1 ]; then
+        log "Would link: $target -> $source"
+        return 0
+    fi
 
     if [ -L "$target" ]; then
         current_link=$(readlink "$target")
@@ -174,6 +187,11 @@ if [ ! -d "$repo_root/themes" ]; then
     exit 1
 fi
 
+if [ ! -x "$plugin_builder" ]; then
+    printf 'Missing or non-executable plugin builder: %s\n' "$plugin_builder" >&2
+    exit 1
+fi
+
 mode=copy
 if [ "$link_mode" -eq 1 ]; then
     mode=link
@@ -184,7 +202,18 @@ log "Repository: $repo_root"
 log "Target: $target_dir"
 log "Mode: $mode"
 
-run mkdir -p "$target_dir" "$target_themes_dir"
+if [ "$dry_run" -eq 1 ]; then
+    log "DRY RUN: build plugin with $plugin_builder"
+    log "DRY RUN: install $plugin_source -> $target_plugins_dir/pegasus-tab-bar.wasm"
+else
+    "$plugin_builder"
+    if [ ! -f "$plugin_source" ]; then
+        printf 'Plugin build did not produce: %s\n' "$plugin_source" >&2
+        exit 1
+    fi
+fi
+
+run mkdir -p "$target_dir" "$target_themes_dir" "$target_plugins_dir"
 
 install_file "$repo_root/config/config.kdl" "$target_dir/config.kdl"
 
@@ -192,6 +221,8 @@ while IFS= read -r -d '' theme_file; do
     relative_theme=${theme_file#"$repo_root/themes"/}
     install_file "$theme_file" "$target_themes_dir/$relative_theme"
 done < <(find "$repo_root/themes" -type f -name '*.kdl' -print0 | sort -z)
+
+install_file "$plugin_source" "$target_plugins_dir/pegasus-tab-bar.wasm"
 
 if [ -n "$backup_dir" ]; then
     log "Backups: $backup_dir"
