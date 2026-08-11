@@ -12,14 +12,11 @@ This is not a final redesign. It is an explicit baseline so future visual change
 
 ## Custom top tab bar
 
-The `plugins/pegasus-tab-bar` Rust plugin replaces only the built-in `tab-bar` alias. The current safety baseline renders:
+The `plugins/pegasus-tab-bar` Rust plugin replaces only the built-in `tab-bar` alias. It renders the current session name first, followed by the existing Zellij tab names (including labels supplied by `pegasus-zellij-state`). Active and inactive tabs use the theme's `ribbon_selected` and `ribbon_unselected` colors respectively.
 
-```text
-Pegasus tab bar
-```
-
-- It uses no application-state permissions, ANSI styling, or mouse handling.
-- The dynamic session name, tab labels, and click-to-focus layer is intentionally deferred until it is tested against a live permission prompt in an isolated Zellij session.
+- On load, it requests only `ReadApplicationState`. The installer pre-grants that exact permission for the local Pegasus tab-bar so its non-selectable bar never needs to receive an interactive `y/n` response.
+- After approval it subscribes to `ModeUpdate` and `TabUpdate`. It does not request `ChangeApplicationState`, accept mouse input, or change focus.
+- Labels are kept verbatim when they fit and otherwise truncated by terminal display width to preserve the one-line bar.
 
 `pegasus-zellij-state` remains independent: it owns the OpenCode-to-Zellij runtime updates that produce labels such as `OC | working (1)`. This repository only displays those existing names.
 
@@ -97,7 +94,41 @@ $ZELLIJ_CONFIG_DIR/backups/pegasus-zellij-personal-config/<timestamp>
 
 The installer does not delete the backups directory. Repeated runs skip unchanged copied files and already-correct symlinks.
 
-Restart Zellij after changing `config.kdl`, `theme_dir`, or theme files.
+### Tab-bar plugin cache
+
+After installing the WASM (in either copy or `--link` mode), the installer
+removes only this plugin's cache directory:
+`${XDG_CACHE_HOME:-$HOME/.cache}/zellij/file:/…/pegasus-tab-bar.wasm/plugin_cache`.
+It derives that path from the exact `tab-bar` `file:` location in
+`config/config.kdl`, so unrelated Zellij plugin caches remain intact. Fully
+restart Zellij afterward: the running server has already loaded its cached WASM.
+
+### Tab-bar permission cache
+
+The installer writes Zellij's XDG-aware permission cache at
+`${XDG_CACHE_HOME:-$HOME/.cache}/zellij/permissions.kdl`. It adds or replaces
+only this entry:
+
+```kdl
+"/home/serg/.config/zellij/plugins/pegasus-tab-bar.wasm" {
+    ReadApplicationState
+}
+```
+
+Although the plugin alias uses
+`file:/home/serg/.config/zellij/plugins/pegasus-tab-bar.wasm`, Zellij 0.44.3
+serializes file-plugin permission keys as the raw absolute path (without the
+`file:` prefix). The installer preserves every unrelated cache entry exactly,
+and deliberately grants neither `ChangeApplicationState` nor any other
+permission. This is necessary because the tab bar intentionally remains
+non-selectable, so Zellij cannot route the interactive prompt response to it.
+
+If the prompt is already stuck, run `./install.sh --link` and then fully
+restart Zellij. The active server reads permissions at startup; dismissing or
+typing into the old prompt is not required.
+
+Restart Zellij after changing `config.kdl`, `theme_dir`, theme files, or the
+permission cache.
 
 ### Plugin target constraint
 

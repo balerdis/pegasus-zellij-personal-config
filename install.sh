@@ -10,6 +10,9 @@ target_plugins_dir=$target_dir/plugins
 backup_root=$target_dir/backups/pegasus-zellij-personal-config
 plugin_builder=$repo_root/scripts/build-pegasus-tab-bar.sh
 plugin_source=$repo_root/plugins/pegasus-tab-bar/target/wasm32-wasip1/release/pegasus-tab-bar.wasm
+permission_granter=$repo_root/scripts/grant-pegasus-tab-bar-permission.py
+zellij_cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/zellij
+permissions_cache=$zellij_cache_dir/permissions.kdl
 
 dry_run=0
 link_mode=0
@@ -156,6 +159,50 @@ install_file() {
     fi
 }
 
+read_tab_bar_location() {
+    python3 - "$repo_root/config/config.kdl" <<'PY'
+import re
+import sys
+from pathlib import PurePosixPath
+
+config_path = sys.argv[1]
+document = open(config_path, encoding="utf-8").read()
+matches = re.findall(
+    r'^\s*tab-bar\s+location="(file:[^"]+)"\s*(?://.*)?$',
+    document,
+    flags=re.MULTILINE,
+)
+if len(matches) != 1:
+    raise SystemExit("Expected exactly one tab-bar file: location in config.kdl")
+
+location = matches[0]
+raw_path = location.removeprefix("file:")
+path = PurePosixPath(raw_path)
+if not path.is_absolute() or any(part in {".", ".."} for part in path.parts):
+    raise SystemExit(f"Unsafe tab-bar file: location: {location}")
+
+print(location)
+print(raw_path)
+PY
+}
+
+invalidate_plugin_cache() {
+    local cache_path
+    cache_path=$1
+
+    if [ "$dry_run" -eq 1 ]; then
+        log "Would invalidate plugin cache: $cache_path"
+        return 0
+    fi
+
+    if [ -e "$cache_path" ] || [ -L "$cache_path" ]; then
+        rm -rf -- "$cache_path"
+        log "Invalidated plugin cache: $cache_path"
+    else
+        log "Plugin cache already absent: $cache_path"
+    fi
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --dry-run)
@@ -192,6 +239,20 @@ if [ ! -x "$plugin_builder" ]; then
     exit 1
 fi
 
+if [ ! -x "$permission_granter" ]; then
+    printf 'Missing or non-executable permission granter: %s\n' "$permission_granter" >&2
+    exit 1
+fi
+
+mapfile -t tab_bar_location < <(read_tab_bar_location)
+if [ "${#tab_bar_location[@]}" -ne 2 ]; then
+    printf 'Could not derive the tab-bar file: location from config.kdl\n' >&2
+    exit 1
+fi
+plugin_location=${tab_bar_location[0]}
+plugin_permission_path=${tab_bar_location[1]}
+plugin_cache_dir=$zellij_cache_dir/$plugin_location/plugin_cache
+
 mode=copy
 if [ "$link_mode" -eq 1 ]; then
     mode=link
@@ -223,6 +284,13 @@ while IFS= read -r -d '' theme_file; do
 done < <(find "$repo_root/themes" -type f -name '*.kdl' -print0 | sort -z)
 
 install_file "$plugin_source" "$target_plugins_dir/pegasus-tab-bar.wasm"
+invalidate_plugin_cache "$plugin_cache_dir"
+
+if [ "$dry_run" -eq 1 ]; then
+    log "Would grant ReadApplicationState only: $plugin_permission_path -> $permissions_cache"
+else
+    "$permission_granter" --cache "$permissions_cache" --plugin-path "$plugin_permission_path"
+fi
 
 if [ -n "$backup_dir" ]; then
     log "Backups: $backup_dir"
@@ -230,4 +298,4 @@ else
     log "Backups: none needed"
 fi
 
-log "Done. Restart Zellij to use updated config or themes."
+log "Done. Restart Zellij to load the updated plugin and permission cache."
