@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Grant the Pegasus tab bar its single required Zellij permission.
+"""Grant the Pegasus tab bar its exact required Zellij permissions.
 
 This deliberately edits only this plugin's top-level KDL node, leaving every
-other cache entry byte-for-byte intact.
+other cache entry byte-for-byte intact. ReadApplicationState renders the current
+session and tabs; ChangeApplicationState is required only to switch to a clicked
+tab.
 """
 
 from __future__ import annotations
@@ -100,7 +102,12 @@ def node_ranges(document: str, plugin_path: str) -> list[tuple[int, int]]:
 
 
 def permission_node(plugin_path: str) -> str:
-    return f'"{plugin_path}" {{\n    ReadApplicationState\n}}\n'
+    return (
+        f'"{plugin_path}" {{\n'
+        "    ReadApplicationState\n"
+        "    ChangeApplicationState\n"
+        "}\n"
+    )
 
 
 def update_cache(document: str, plugin_path: str) -> str:
@@ -141,7 +148,7 @@ def main() -> None:
     updated = update_cache(original, args.plugin_path)
     if updated != original:
         write_atomically(args.cache, updated)
-        print(f"Granted ReadApplicationState: {args.plugin_path}")
+        print(f"Granted ReadApplicationState and ChangeApplicationState: {args.plugin_path}")
     else:
         print(f"Permission already exact: {args.plugin_path}")
 

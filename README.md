@@ -14,8 +14,8 @@ This is not a final redesign. It is an explicit baseline so future visual change
 
 The `plugins/pegasus-tab-bar` Rust plugin replaces only the built-in `tab-bar` alias. It renders the current session name first, followed by the existing Zellij tab names (including labels supplied by `pegasus-zellij-state`). Active and inactive tabs use the theme's `ribbon_selected` and `ribbon_unselected` colors respectively.
 
-- On load, it requests only `ReadApplicationState`. The installer pre-grants that exact permission for the local Pegasus tab-bar so its non-selectable bar never needs to receive an interactive `y/n` response.
-- After approval it subscribes to `ModeUpdate` and `TabUpdate`. It does not request `ChangeApplicationState`, accept mouse input, or change focus.
+- On load, it requests exactly `ReadApplicationState` and `ChangeApplicationState`. The installer pre-grants those exact permissions for the local Pegasus tab-bar so its non-selectable bar never needs to receive an interactive `y/n` response.
+- After approval it subscribes to `ModeUpdate`, `TabUpdate`, and `Mouse`. Only a left click within a rendered tab range switches to that tab; session text, padding, drag, scroll, right click, and keyboard navigation have no plugin side effect.
 - Labels are kept verbatim when they fit and otherwise truncated by terminal display width to preserve the one-line bar.
 
 `pegasus-zellij-state` remains independent: it owns the OpenCode-to-Zellij runtime updates that produce labels such as `OC | working (1)`. This repository only displays those existing names.
@@ -112,16 +112,18 @@ only this entry:
 ```kdl
 "/home/serg/.config/zellij/plugins/pegasus-tab-bar.wasm" {
     ReadApplicationState
+    ChangeApplicationState
 }
 ```
 
 Although the plugin alias uses
 `file:/home/serg/.config/zellij/plugins/pegasus-tab-bar.wasm`, Zellij 0.44.3
 serializes file-plugin permission keys as the raw absolute path (without the
-`file:` prefix). The installer preserves every unrelated cache entry exactly,
-and deliberately grants neither `ChangeApplicationState` nor any other
-permission. This is necessary because the tab bar intentionally remains
-non-selectable, so Zellij cannot route the interactive prompt response to it.
+`file:` prefix). The installer preserves every unrelated cache entry exactly
+and grants no permissions besides `ReadApplicationState` (to render session and
+tabs) and `ChangeApplicationState` (to switch only the clicked tab). This is
+necessary because the tab bar intentionally remains non-selectable, so Zellij
+cannot route the interactive prompt response to it.
 
 If the prompt is already stuck, run `./install.sh --link` and then fully
 restart Zellij. The active server reads permissions at startup; dismissing or

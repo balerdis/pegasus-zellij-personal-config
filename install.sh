@@ -287,7 +287,7 @@ install_file "$plugin_source" "$target_plugins_dir/pegasus-tab-bar.wasm"
 invalidate_plugin_cache "$plugin_cache_dir"
 
 if [ "$dry_run" -eq 1 ]; then
-    log "Would grant ReadApplicationState only: $plugin_permission_path -> $permissions_cache"
+    log "Would grant ReadApplicationState and ChangeApplicationState only: $plugin_permission_path -> $permissions_cache"
 else
     "$permission_granter" --cache "$permissions_cache" --plugin-path "$plugin_permission_path"
 fi

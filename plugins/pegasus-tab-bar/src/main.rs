@@ -6,6 +6,14 @@ struct PegasusTabBar {
     permission: PermissionState,
     mode_info: Option<ModeInfo>,
     tabs: Vec<TabInfo>,
+    tab_ranges: Vec<TabRange>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TabRange {
+    start: usize,
+    end: usize,
+    position: usize,
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -20,7 +28,10 @@ impl ZellijPlugin for PegasusTabBar {
     fn load(&mut self, _configuration: std::collections::BTreeMap<String, String>) {
         set_selectable(false);
         subscribe(&[EventType::PermissionRequestResult, EventType::Timer]);
-        request_permission(&[PermissionType::ReadApplicationState]);
+        request_permission(&[
+            PermissionType::ReadApplicationState,
+            PermissionType::ChangeApplicationState,
+        ]);
         set_timeout(0.0);
     }
 
@@ -29,7 +40,11 @@ impl ZellijPlugin for PegasusTabBar {
             Event::Timer(_) => true,
             Event::PermissionRequestResult(PermissionStatus::Granted) => {
                 self.permission = PermissionState::Granted;
-                subscribe(&[EventType::ModeUpdate, EventType::TabUpdate]);
+                subscribe(&[
+                    EventType::ModeUpdate,
+                    EventType::TabUpdate,
+                    EventType::Mouse,
+                ]);
                 true
             }
             Event::PermissionRequestResult(PermissionStatus::Denied) => {
@@ -38,11 +53,23 @@ impl ZellijPlugin for PegasusTabBar {
             }
             Event::ModeUpdate(mode_info) if self.permission == PermissionState::Granted => {
                 self.mode_info = Some(mode_info);
+                self.tab_ranges.clear();
                 true
             }
             Event::TabUpdate(tabs) if self.permission == PermissionState::Granted => {
                 self.tabs = tabs;
+                self.tab_ranges.clear();
                 true
+            }
+            Event::Mouse(Mouse::LeftClick(0, column))
+                if self.permission == PermissionState::Granted =>
+            {
+                if let Some(position) = tab_position_at(&self.tab_ranges, column) {
+                    if let Ok(tab_index) = u32::try_from(position.saturating_add(1)) {
+                        switch_tab_to(tab_index);
+                    }
+                }
+                false
             }
             _ => false,
         }
@@ -60,7 +87,8 @@ impl ZellijPlugin for PegasusTabBar {
 }
 
 impl PegasusTabBar {
-    fn render_tabs(&self, cols: usize) -> String {
+    fn render_tabs(&mut self, cols: usize) -> String {
+        self.tab_ranges.clear();
         let Some(mode_info) = &self.mode_info else {
             return "Loading session…".to_owned();
         };
@@ -85,13 +113,19 @@ impl PegasusTabBar {
                 break;
             }
             let tab_budget = remaining;
-            push_segment(
+            let start = cols - remaining;
+            let width = push_segment(
                 &mut line,
                 &mut remaining,
                 &tab.name,
                 tab_budget,
                 if tab.active { selected } else { unselected },
             );
+            self.tab_ranges.push(TabRange {
+                start,
+                end: start + width,
+                position: tab.position,
+            });
         }
 
         if remaining > 0 {
@@ -108,9 +142,45 @@ fn push_segment(
     label: &str,
     budget: usize,
     colors: StyleDeclaration,
-) {
+) -> usize {
+    let (content, width) = segment_content(label, budget, remaining);
+
+    line.push_str(&paint(content, colors));
+    width
+}
+
+fn tab_position_at(tab_ranges: &[TabRange], column: usize) -> Option<usize> {
+    tab_ranges
+        .iter()
+        .find(|range| range.start <= column && column < range.end)
+        .map(|range| range.position)
+}
+
+#[cfg(test)]
+fn tab_ranges_for(cols: usize, session_name: &str, tabs: &[(usize, &str)]) -> Vec<TabRange> {
+    let mut remaining = cols;
+    let session_budget = cols.saturating_div(3).max(1);
+    segment_content(session_name, session_budget, &mut remaining);
+
+    let mut tab_ranges = Vec::new();
+    for (position, name) in tabs {
+        if remaining < 3 {
+            break;
+        }
+        let start = cols - remaining;
+        let width = segment_content(name, remaining, &mut remaining).1;
+        tab_ranges.push(TabRange {
+            start,
+            end: start + width,
+            position: *position,
+        });
+    }
+    tab_ranges
+}
+
+fn segment_content(label: &str, budget: usize, remaining: &mut usize) -> (String, usize) {
     if *remaining == 0 {
-        return;
+        return (String::new(), 0);
     }
 
     let content_width = budget.min(*remaining).saturating_sub(2);
@@ -118,9 +188,8 @@ fn push_segment(
     let content = format!(" {label} ");
     let width = display_width(&content).min(*remaining);
     let content = truncate_to_width(&content, width);
-
-    line.push_str(&paint(content, colors));
     *remaining -= width;
+    (content, width)
 }
 
 fn paint(content: String, colors: StyleDeclaration) -> String {
@@ -199,5 +268,54 @@ mod tests {
     #[test]
     fn truncates_to_a_single_ellipsis_when_only_one_column_is_available() {
         assert_eq!(truncate_to_width("session", 1), "…");
+    }
+
+    #[test]
+    fn clicks_map_to_the_actual_tab_positions_not_their_render_order() {
+        let ranges = tab_ranges_for(30, "work", &[(4, "inactive"), (1, "active")]);
+
+        assert_eq!(
+            tab_position_at(&ranges, 2),
+            None,
+            "session is not clickable"
+        );
+        assert_eq!(tab_position_at(&ranges, ranges[0].start), Some(4));
+        assert_eq!(tab_position_at(&ranges, ranges[0].end - 1), Some(4));
+        assert_eq!(tab_position_at(&ranges, ranges[1].start), Some(1));
+        assert_eq!(tab_position_at(&ranges, ranges[1].end - 1), Some(1));
+        assert_eq!(
+            tab_position_at(&ranges, ranges[1].end),
+            None,
+            "padding is inert"
+        );
+    }
+
+    #[test]
+    fn tab_ranges_stop_before_the_trailing_padding() {
+        let ranges = tab_ranges_for(40, "session", &[(0, "one"), (1, "two")]);
+
+        assert_eq!(tab_position_at(&ranges, 0), None);
+        assert_eq!(tab_position_at(&ranges, 8), None);
+        assert_eq!(tab_position_at(&ranges, 9), Some(0));
+        assert_eq!(tab_position_at(&ranges, 14), Some(1));
+        assert_eq!(tab_position_at(&ranges, 40 - 1), None);
+    }
+
+    #[test]
+    fn truncated_tab_label_remains_clickable_across_its_visible_range() {
+        let ranges = tab_ranges_for(12, "session-name", &[(7, "状態を確認しています")]);
+
+        assert_eq!(
+            ranges,
+            vec![TabRange {
+                start: 4,
+                end: 11,
+                position: 7
+            }]
+        );
+        assert_eq!(tab_position_at(&ranges, 4), Some(7));
+        assert_eq!(tab_position_at(&ranges, 10), Some(7));
+        assert_eq!(tab_position_at(&ranges, 11), None);
+        assert_eq!(tab_position_at(&ranges, 12), None);
     }
 }
