@@ -5,6 +5,7 @@ struct PegasusTabBar;
 
 impl ZellijPlugin for PegasusTabBar {
     fn load(&mut self, _configuration: std::collections::BTreeMap<String, String>) {
+        set_selectable(false);
         subscribe(&[EventType::Timer]);
         set_timeout(0.0);
     }
