@@ -27,7 +27,18 @@ enum PermissionState {
 impl ZellijPlugin for PegasusTabBar {
     fn load(&mut self, _configuration: std::collections::BTreeMap<String, String>) {
         set_selectable(false);
-        subscribe(&[EventType::PermissionRequestResult, EventType::Timer]);
+        // Subscribe to everything up front. Zellij replays the events it queued while the
+        // plugin was loading (the initial ModeUpdate and TabUpdate of a new tab) against the
+        // subscriptions that exist when loading finishes; subscribing later drops them, and
+        // the bar stays on "Loading session…" until the next mode change. The host still
+        // withholds ModeUpdate and TabUpdate until ReadApplicationState is granted.
+        subscribe(&[
+            EventType::PermissionRequestResult,
+            EventType::Timer,
+            EventType::ModeUpdate,
+            EventType::TabUpdate,
+            EventType::Mouse,
+        ]);
         request_permission(&[
             PermissionType::ReadApplicationState,
             PermissionType::ChangeApplicationState,
@@ -40,27 +51,16 @@ impl ZellijPlugin for PegasusTabBar {
             Event::Timer(_) => true,
             Event::PermissionRequestResult(PermissionStatus::Granted) => {
                 self.permission = PermissionState::Granted;
-                subscribe(&[
-                    EventType::ModeUpdate,
-                    EventType::TabUpdate,
-                    EventType::Mouse,
-                ]);
                 true
             }
             Event::PermissionRequestResult(PermissionStatus::Denied) => {
                 self.permission = PermissionState::Denied;
                 true
             }
-            Event::ModeUpdate(mode_info) if self.permission == PermissionState::Granted => {
-                self.mode_info = Some(mode_info);
-                self.tab_ranges.clear();
-                true
-            }
-            Event::TabUpdate(tabs) if self.permission == PermissionState::Granted => {
-                self.tabs = tabs;
-                self.tab_ranges.clear();
-                true
-            }
+            // Receiving application state proves ReadApplicationState is granted, even when a
+            // replayed state event arrives before the permission result.
+            Event::ModeUpdate(mode_info) => self.apply_mode_update(mode_info),
+            Event::TabUpdate(tabs) => self.apply_tab_update(tabs),
             Event::Mouse(Mouse::LeftClick(0, column))
                 if self.permission == PermissionState::Granted =>
             {
@@ -87,6 +87,20 @@ impl ZellijPlugin for PegasusTabBar {
 }
 
 impl PegasusTabBar {
+    fn apply_mode_update(&mut self, mode_info: ModeInfo) -> bool {
+        self.permission = PermissionState::Granted;
+        self.mode_info = Some(mode_info);
+        self.tab_ranges.clear();
+        true
+    }
+
+    fn apply_tab_update(&mut self, tabs: Vec<TabInfo>) -> bool {
+        self.permission = PermissionState::Granted;
+        self.tabs = tabs;
+        self.tab_ranges.clear();
+        true
+    }
+
     fn render_tabs(&mut self, cols: usize) -> String {
         self.tab_ranges.clear();
         let Some(mode_info) = &self.mode_info else {
@@ -299,6 +313,21 @@ mod tests {
         assert_eq!(tab_position_at(&ranges, 9), Some(0));
         assert_eq!(tab_position_at(&ranges, 14), Some(1));
         assert_eq!(tab_position_at(&ranges, 40 - 1), None);
+    }
+
+    #[test]
+    fn replayed_mode_update_renders_the_session_before_the_permission_result() {
+        let mut bar = PegasusTabBar::default();
+
+        assert!(bar.apply_mode_update(ModeInfo {
+            session_name: Some("work".to_owned()),
+            ..Default::default()
+        }));
+
+        assert!(bar.permission == PermissionState::Granted);
+        let line = bar.render_tabs(40);
+        assert!(!line.contains("Loading session"));
+        assert!(line.contains(" work "));
     }
 
     #[test]
